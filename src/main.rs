@@ -3,6 +3,7 @@ use std::{borrow::Cow, error::Error, fs::File};
 use glam::{Mat2, Vec2};
 use image::{Delay, DynamicImage, Frame, GenericImageView, ImageBuffer, ImageReader, RgbaImage, codecs::gif::{GifEncoder, Repeat}};
 use clap::{Parser, Subcommand};
+use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 
 const GIF_FPS: u32 = 15;
 
@@ -149,14 +150,26 @@ fn load_image(path: &str) -> Result<DynamicImage, Box<dyn Error + 'static>> {
     Ok(ImageReader::open(path)?.decode()?)
 }
 
+fn bar(len: u64, msg: &'static str) -> ProgressBar {
+    let pb = ProgressBar::new(len);
+    pb.set_style(
+        ProgressStyle::with_template("{msg:>10} [{bar:40}] {pos}/{len} eta {eta}")
+        .unwrap()
+        .progress_chars("=> ")
+    );
+    pb.set_message(msg);
+    pb
+}
+
 fn save_gif(frames: Vec<RgbaImage>, path: &str) -> Result<(), Box<dyn Error>> {
     let file = File::create(path)?;
     let mut encoder = GifEncoder::new(file);
     encoder.set_repeat(Repeat::Infinite)?;
 
-    let delay = Delay::from_numer_denom_ms((1.0 / GIF_FPS as f32).round() as u32, 1);
+    let delay = Delay::from_numer_denom_ms(1000, GIF_FPS);
 
-    encoder.encode_frames(frames.into_iter().map(|f| {
+    let n = frames.len() as u64;
+    encoder.encode_frames(frames.into_iter().progress_with(bar(n, "encoding")).map(|f| {
         Frame::from_parts(f, 0, 0, delay)
     }))?;
 
@@ -200,6 +213,7 @@ fn main() {
     if let Some(d) = args.duration {
         let frames = (d / (GIF_FPS as f32)).round() as u32;
         let frames: Vec<RgbaImage> = (0..frames)
+            .progress_with(bar(frames as u64, "rendering"))
             .map(|i| apply_all_at(&img, &ops, i as f32 / frames as f32))
             .collect();
 
