@@ -31,7 +31,7 @@ fn bar(len: u64, msg: &'static str) -> ProgressBar {
 fn save_gif(frames: Vec<RgbaImage>, path: &str) -> Result<(), Box<dyn Error>> {
     let file = File::create(path)?;
     let mut encoder = GifEncoder::new_with_speed(file, 15);
-    encoder.set_repeat(Repeat::Finite(0))?;
+    encoder.set_repeat(Repeat::Infinite)?;
 
     let delay = Delay::from_numer_denom_ms(1000, GIF_FPS);
 
