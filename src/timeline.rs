@@ -36,11 +36,15 @@ impl Param {
 impl FromStr for Param {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parse_num = |st: Option<&str>| -> Result<f32, Self::Err> {
+            let string = st.ok_or(format!("missing value in '{}'", s))?;
+            string.trim().parse::<f32>().map_err(|e| format!("could not parse {} in '{}': {}", string.trim(), s, e.to_string()))
+        };
         let mut nums = s.split("..");
-        let from = nums.next().ok_or("no 'from' value")?.parse::<f32>().map_err(|e| e.to_string())?;
-        let to = nums.next().ok_or("no 'to' value")?.parse::<f32>().map_err(|e| e.to_string())?;
+        let from = parse_num(nums.next())?;
+        let to = parse_num(nums.next())?;
         match nums.next() {
-            Some(_) => Err("too many numbers".to_string()),
+            Some(_) => Err(format!("too many numbers in '{}'", s)),
             None => Ok(Self::range(from, to)),
         }
     }
@@ -61,8 +65,14 @@ impl TryFrom<ParamRepr> for Param {
 #[derive(Subcommand, Deserialize, Debug)]
 #[serde(tag = "op", rename_all = "kebab-case")]
 pub enum Op {
-    Squish { amount: Param },
+    Scale {
+        #[arg(long, allow_hyphen_values = true)]
+        x_factor: Param, 
+        #[arg(long, allow_hyphen_values = true)]
+        y_factor: Param
+    },
     Slant {
+        #[arg(long, allow_hyphen_values = true)]
         angle: Param
     },
     FlipHorizontal,
@@ -113,7 +123,9 @@ fn one() -> f32 { 1.0 }
 
 #[derive(Deserialize, Debug)]
 pub struct Effect {
+    #[serde(flatten)]
     pub op: Op,
+    #[serde(flatten)]
     pub timing: Timing,
 }
 
@@ -123,8 +135,17 @@ pub struct Timeline {
     pub input: Option<String>,
     #[serde(default)]
     pub output: Option<String>,
+    pub length: u32,
     #[serde(default)]
     pub effects: Vec<Effect>
+}
+
+impl Timeline {
+    fn with_input_output(mut self, input: Option<String>, output: Option<String>) -> Timeline{
+        self.input = Some(input.unwrap_or_else(|| self.input.expect("no input file")));
+        self.output = output.or(self.output);
+        self
+    }
 }
 
 #[derive(Subcommand)]
@@ -141,6 +162,8 @@ struct Cli {
     pub input: Option<String>,
     #[arg(short, long, global = true)]
     pub output: Option<String>,
+    #[arg(short, long)]
+    pub time: Option<u32>,
 
     #[command(subcommand)]
     source: Source,
@@ -170,10 +193,14 @@ fn parse_effects(args: &[String]) -> Result<Vec<Effect>, clap::Error> {
 pub fn timeline() -> Result<Timeline, Box<dyn Error>> {
     let cli = Cli::parse();
     Ok(match cli.source {
-        Source::File { path } => toml::from_str(&fs::read_to_string(path)?)?,
+        Source::File { path } => {
+            let tl: Timeline = toml::from_str(&fs::read_to_string(path)?)?;
+            tl.with_input_output(cli.input, cli.output)
+        },
         Source::Inline(args) => Timeline {
             input: cli.input,
             output: cli.output,
+            length: cli.time.expect("specify length of gif with -t"),
             effects: parse_effects(&args)?
         },
     })

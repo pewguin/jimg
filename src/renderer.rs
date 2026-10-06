@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use image::{DynamicImage, RgbaImage};
 
-use crate::filters::{flip_horizontal, flip_vertical, raw_resize, resize, rotate, slant, squish};
+use crate::filters::{flip_horizontal, flip_vertical, raw_resize, resize, rotate, scale, slant};
 use crate::timeline::{Ease, Effect, Loop, Op, Param, Timing};
 
 impl Ease {
@@ -50,7 +50,7 @@ impl Effect {
     pub fn apply(&self, img: &DynamicImage, t: f32) -> RgbaImage {
         let t = self.timing.progress(t);
         match &self.op {
-            Op::Squish { amount } => squish(&img, amount.at(t)),
+            Op::Scale { x_factor, y_factor }=> scale(&img, x_factor.at(t), y_factor.at(t)),
             Op::Slant { angle } => slant(&img, angle.at(t)),
             Op::FlipHorizontal => flip_horizontal(&img),
             Op::FlipVertical => flip_vertical(&img),

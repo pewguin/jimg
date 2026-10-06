@@ -1,0 +1,26 @@
+length = 1000
+
+# Lengthen throughout spin
+[[effects]]
+op = "scale"
+x_factor = "1..0.1"
+y_factor = "1..1.5"
+start = 0.3
+end = 0.8
+ease = "ease-in-out"
+
+# Initial CCW spin
+[[effects]]
+op = "rotate"
+angle = "0..-20"
+start = 0
+end = 0.1
+ease = "ease-in-out"
+
+# Spin a lot
+[[effects]]
+op = "rotate"
+angle = "-20..3620"
+start = 0.1
+end = 0.9
+ease = "ease-in-out"

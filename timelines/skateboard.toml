@@ -1,0 +1,16 @@
+length = 500
+
+[[effects]]
+op = "scale"
+x_factor = 1
+y_factor = 0.1
+
+[[effects]]
+op = "rotate"
+angle = "-20..20"
+end = 0.5
+
+[[effects]]
+op = "rotate"
+angle = "0..-40"
+start = 0.5

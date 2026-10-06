@@ -11,12 +11,13 @@ fn get_pixel_or(src: &DynamicImage, x: u32, y: u32, or: &Rgba<u8>) -> Rgba<u8> {
     }
 }
 
-pub fn squish(src: &DynamicImage, amount: f32) -> RgbaImage {
-    let mut dst: RgbaImage = ImageBuffer::new((src.width() as f32 / amount).round() as u32, src.height());
+pub fn scale(src: &DynamicImage, x_fac: f32, y_fac: f32) -> RgbaImage {
+    let mut dst: RgbaImage = ImageBuffer::new((src.width() as f32 * x_fac) as u32, (src.height() as f32 * y_fac) as u32);
 
     for (x, y, pixel) in dst.enumerate_pixels_mut() {
-        let px = src.get_pixel((x as f32 * amount).round() as u32, y);
-        *pixel = px;
+        let sx = x as f32 / x_fac;
+        let sy = y as f32 / y_fac;
+        *pixel = src.get_pixel(sx as u32, sy as u32);
     }
     dst
 }
@@ -26,7 +27,7 @@ pub fn slant(src: &DynamicImage, angle: f32) -> RgbaImage {
     let (w, h) = src.dimensions();
     let m = (-alpha + std::f32::consts::PI / 2.0).tan();
  
-    let slant = |x: u32, y: u32| {
+    let slant = |x: u32, y: u32| -> u32 {
         (y as f32 / m + x as f32).round() as u32
     };
 

@@ -1,0 +1,16 @@
+length = 1000
+
+[[effects]]
+op = "scale"
+amount = "1..0.1"
+start = 0.4
+end = 1.0
+ease = "linear"
+
+[[effects]]
+op = "rotate"
+angle = "0..90"
+start = 0
+end = 0.3
+ease = "ease-in-out"
+

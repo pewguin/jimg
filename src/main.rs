@@ -1,5 +1,4 @@
 pub mod filters;
-pub mod parser;
 pub mod renderer;
 pub mod timeline;
 
@@ -53,10 +52,17 @@ fn save_gif(frames: Vec<RgbaImage>, path: &str) -> Result<(), Box<dyn Error>> {
 
 
 fn main() {
-    let timeline = timeline().unwrap();
+    let timeline = match timeline() {
+        Ok(tl) => tl,
+        Err(err) => {
+            panic!("{:#?}", err);
+        },
+    };
+
+    println!("tl: {:?}", timeline);
     let img = load_image(&timeline.input.unwrap_or("img.png".to_string())).unwrap();
 
-    let frames = (3000.0 / GIF_FPS as f32).round() as u32;
+    let frames = (timeline.length as f32 / GIF_FPS as f32).round() as u32;
     let frames: Vec<RgbaImage> = (0..frames)
         .progress_with(bar(frames as u64, "rendering"))
         .map(|i| renderer::apply_all(&img, &timeline.effects, i as f32 / frames as f32))

@@ -2,10 +2,15 @@
 
 ## Operations
 
-| Operation | Modifier | Effect |
+| Operation | Operands | Effect |
 |-----------|----------|--------|
-| `squish`  | Squish factor (e.g. `2`) | Narrows the image horizontally. |
-| `slant`   | Angle in degrees (e.g. `30`) | Shears the image horizontally. |
+| `scale`  | x_factor: scales on width, y_factor: scales on height | Scales the image |
+| `slant` | angle: angle to perform the slant at | Shears the image |
+| `flip-horizontal` | | Flips the image horizontally |
+| `flip-vertical` | | Flips the image vertically |
+| `rotate`   | angle: angle to rotate image to in degrees, clockwise | Rotates the image |
+| `raw-resize` | x: new width, y: new height | Changes the size of an image but not the positions of any pixels |
+| `resize` | x: new width, y: new height | Scales an image to a new size, stretching as neccessary |
 
 ## Build
 
@@ -16,39 +21,57 @@ cargo build --release
 ## Usage
 
 ```sh
-jimg <OPER> <MODIFIER> --input <INPUT> [--output <OUTPUT>]
+jimg --input <INPUT> --time <TIME> [--output <OUTPUT>] (file <TIMELINE>|<OPERS>)
 ```
 
 ### Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `OPER` | Operation to apply: `squish` or `slant` |
-| `MODIFIER` | Float value used by the operation (squish factor or slant angle in degrees) |
 | `-i, --input <INPUT>` | Path to the source image |
-| `-o, --output <OUTPUT>` | Path to write the result (default: `output.png`) |
+| `-o, --output <OUTPUT>` | Path to write the result (default: `output.gif`) |
+| `-t, --time <TIME>` | Amount of milliseconds the gif should run for |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
+| `<TIMELINE>` | Path to the timeline TOML file |
+| `<OPERS>` | List of operations seperated by the + character |
 
 ### Examples
 
-Squish an image to half its width:
+Halve an image's width, then spin it in a circle
 
 ```sh
-jimg squish 2 -i photo.png -o squished.png
+jimg -i photo.png -t 1000 -o squished.gif scale --x_factor 1..0.5 --y_factor 1 --end 0.5 --ease cubic + rotate --angle 0..360 --start 0.5
 ```
 
-Slant an image by 30 degrees:
+Use the modifications specified in timeline.toml
 
 ```sh
-jimg slant 30 -i photo.png -o slanted.png
+jimg -i photo.png -t 1000 file timeline.toml
+```
+
+Timeline file that rotates an image CCW and then back
+
+```toml
+length = 1000
+input = "photo.png"
+
+[[effects]]
+op = "rotate"
+angle = "0..360"
+end = 0.5
+ease = "quad"
+
+[[effects]]
+op = "rotate"
+angle = "0..-360"
+start = 0.5
 ```
 
 ## Supported formats
 
-Input and output formats are handled by the [`image`](https://crates.io/crates/image) crate. The output format is chosen from the file extension of `--output` (for example `.png`, `.jpg`, `.bmp`).
-
 ## Notes
 
-- Giving `slant` angle values outside of [0, 90) will cause issues. As the input approaches 90, the image will get bigger (see f(x)=tan(x))
-- `squish` has no interpolation
+- When passing a timeline file, input and output files from the command line are prioritized
+- In fact, input and output are not neccessary in the timeline file, opting to be always specified in the command
+- Example timelines can be found in timelines/
