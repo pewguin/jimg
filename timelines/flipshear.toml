@@ -1,0 +1,17 @@
+length = 1000
+
+[[effects]]
+op = "scale"
+x_factor = 0.2
+y_factor = 0.2
+
+[[effects]]
+op = "flip-horizontal"
+
+[[effects]]
+op = "shear"
+horizontal = "0..2"
+vertical = "0..2"
+
+[[effects]]
+op = "flip-horizontal"

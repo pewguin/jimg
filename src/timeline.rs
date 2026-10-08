@@ -61,19 +61,36 @@ impl TryFrom<ParamRepr> for Param {
     }
 }
 
+impl Default for Param {
+    fn default() -> Self {
+        Self::fixed(1.0)
+    }
+}
+
+fn param_one() -> Param { Param::fixed(1.0) }
+fn param_zero() -> Param { Param::fixed(0.0) }
+
+fn one() -> f32 { 1.0 }
+fn zero() -> f32 { 0.0 }
 
 #[derive(Subcommand, Deserialize, Debug)]
 #[serde(tag = "op", rename_all = "kebab-case")]
 pub enum Op {
     Scale {
         #[arg(long, allow_hyphen_values = true)]
+        #[serde(default)]
         x_factor: Param, 
         #[arg(long, allow_hyphen_values = true)]
-        y_factor: Param
+        #[serde(default)]
+        y_factor: Param,
     },
-    Slant {
+    Shear {
         #[arg(long, allow_hyphen_values = true)]
-        angle: Param
+        #[serde(default = "param_zero")]
+        horizontal: Param,
+        #[arg(long, allow_hyphen_values = true)]
+        #[serde(default = "param_zero")]
+        vertical: Param,
     },
     FlipHorizontal,
     FlipVertical,
@@ -83,6 +100,10 @@ pub enum Op {
     },
     RawResize { x: u32, y: u32 },
     Resize { x: u32, y: u32 },
+    Multiply { 
+        #[arg(long, allow_hyphen_values = true)]
+        factor: Param
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, ValueEnum)]
@@ -113,13 +134,12 @@ pub struct Timing {
     #[serde(default = "one")]
     pub end: f32,
     #[arg(long, global = true, default_value = "once")]
-    #[serde(default)]
+    #[serde(default, rename = "loop")]
     pub looping: Loop,
     #[arg(long, global = true, default_value = "linear")]
-    #[serde(default, rename = "loop")]
+    #[serde(default)]
     pub ease: Ease,
 }
-fn one() -> f32 { 1.0 }
 
 #[derive(Deserialize, Debug)]
 pub struct Effect {

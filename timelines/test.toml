@@ -1,0 +1,16 @@
+length = 1000
+
+[[effects]]
+op = "scale"
+x_factor = "1..2"
+y_factor = "1..0.8"
+loop = "pingpong"
+ease = "ease-in-out"
+
+[[effects]]
+op = "scale"
+
+[[effects]]
+op = "multiply"
+factor = "0.01..20"
+ease = "cubic"

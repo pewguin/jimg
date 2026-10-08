@@ -1,98 +1,135 @@
 use glam::{Mat2, Vec2};
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba, RgbaImage};
 
+fn to_vec(value: (u32, u32)) -> Vec2 {
+    Vec2::new(value.0 as f32, value.1 as f32)
+}
+
+fn vec_to_size(v: Vec2) -> (u32, u32) {
+    (v.x.round() as u32, v.y.round() as u32)
+}
+
+fn add_tuple(lhs: (u32, u32), rhs: (u32, u32)) -> (u32, u32) {
+    return (lhs.0 + rhs.0, lhs.1 + rhs.1)
+}
+
 fn get_pixel_or(src: &DynamicImage, x: u32, y: u32, or: &Rgba<u8>) -> Rgba<u8> {
     let (sx, sy) = src.dimensions();
 
-    if x < sx && y < sy {
+    if x > 0 && x < sx && y > 0 && y < sy {
         src.get_pixel(x, y)
     } else {
         or.clone()
     }
 }
 
-pub fn scale(src: &DynamicImage, x_fac: f32, y_fac: f32) -> RgbaImage {
-    let mut dst: RgbaImage = ImageBuffer::new((src.width() as f32 * x_fac) as u32, (src.height() as f32 * y_fac) as u32);
+fn apply_filter<F>(src: &DynamicImage, size: (u32, u32), get_from: F) -> RgbaImage
+where F: Fn(Vec2) -> Vec2 {
+    let default_color = Rgba::from([0, 0, 0, 0]);
+    let mut dst: RgbaImage = ImageBuffer::new(size.0, size.1);
 
     for (x, y, pixel) in dst.enumerate_pixels_mut() {
-        let sx = x as f32 / x_fac;
-        let sy = y as f32 / y_fac;
-        *pixel = src.get_pixel(sx as u32, sy as u32);
+        let dst_vec = to_vec((x, y));
+        let src_vec = get_from(dst_vec);
+
+        let s_pos = (src_vec.x.floor() as u32, src_vec.y.floor() as u32);
+
+        *pixel = get_pixel_or(src, s_pos.0, s_pos.1, &default_color);
     }
+
     dst
 }
 
-pub fn slant(src: &DynamicImage, angle: f32) -> RgbaImage {
-    let alpha = angle.to_radians();
-    let (w, h) = src.dimensions();
-    let m = (-alpha + std::f32::consts::PI / 2.0).tan();
- 
-    let slant = |x: u32, y: u32| -> u32 {
-        (y as f32 / m + x as f32).round() as u32
-    };
+fn matrix_filter(src: &DynamicImage, mat: Mat2) -> RgbaImage {
+    // need for size of transformed image
+    let ssize = to_vec(src.dimensions());
+    let sc = ssize * 0.5;
 
-    let mut dst: RgbaImage = ImageBuffer::new(slant(w, h), h);
+    let corners = [Vec2::ZERO, Vec2::X, Vec2::ONE, Vec2::Y]
+        .map(|c| Vec2::new(c.x * ssize.x, c.y * ssize.y))
+        .map(|c| mat * c);
 
-    for (x, y, pixel) in src.pixels() {
-        dst.put_pixel(slant(x, y), y, pixel);
-    }
+    let minx = corners.iter().map(|c| c.x).reduce(|p, t| p.min(t)).unwrap();
+    let maxx = corners.iter().map(|c| c.x).reduce(|p, t| p.max(t)).unwrap();
+    let miny = corners.iter().map(|c| c.y).reduce(|p, t| p.min(t)).unwrap();
+    let maxy = corners.iter().map(|c| c.y).reduce(|p, t| p.max(t)).unwrap();
 
-    dst
+    // Bounding corners of new image in source image space
+    let tr = Vec2::new(maxx, maxy);
+    let bl = Vec2::new(minx, miny);
+
+    // Distance from bl to tr is the size
+    let size = vec_to_size(tr - bl);
+    // let size = (100, 100);
+
+    let c_dist = to_vec(size) * 0.5;
+    let inv = mat.inverse_or_zero();
+
+    apply_filter(
+        src, 
+        size,
+        |ds| inv * (ds - c_dist) + sc)
+}
+
+pub fn offset(src: &DynamicImage, offset: (u32, u32)) -> RgbaImage {
+    let dims = to_vec(src.dimensions());
+    let offsetv = to_vec(offset);
+    let offset_amount = Vec2::new(
+        offsetv.x / dims.x,
+        offsetv.y / dims.y
+    );
+    apply_filter(
+        src, 
+        add_tuple(offset, src.dimensions()),
+        |duv| offset_amount + duv)
+}
+
+pub fn scale(src: &DynamicImage, x_fac: f32, y_fac: f32) -> RgbaImage {
+    let scale = Mat2::from_rows_slice(&[
+        x_fac, 0.0,
+        0.0,   y_fac]);
+    matrix_filter(src, scale)
+}
+
+pub fn shear(src: &DynamicImage, horizontal: f32, vertical: f32) -> RgbaImage {
+    let shear = Mat2::from_rows_slice(&[
+        1.0 + horizontal * vertical, horizontal,
+        vertical, 1.0]);
+    matrix_filter(src, shear)
 }
 
 pub fn flip_horizontal(src: &DynamicImage) -> RgbaImage {
-    let (w, h) = src.dimensions();
-    let mut dst: RgbaImage = ImageBuffer::new(w, h);
-
-    for (x, y, pixel) in dst.enumerate_pixels_mut() {
-        *pixel = src.get_pixel(w - x - 1, y);
-    }
-
-    dst
+    let flip = Mat2::from_rows_slice(&[
+        -1.0, 0.0,
+        0.0, 1.0]);
+    matrix_filter(src, flip)
 }
 
 pub fn flip_vertical(src: &DynamicImage) -> RgbaImage {
-    let (w, h) = src.dimensions();
-    let mut dst: RgbaImage = ImageBuffer::new(w, h);
-
-    for (x, y, pixel) in dst.enumerate_pixels_mut() {
-        *pixel = src.get_pixel(x, h - y - 1);
-    }
-
-    dst
+    let flip = Mat2::from_rows_slice(&[
+        1.0, 0.0,
+        0.0, -1.0]);
+    matrix_filter(src, flip)
 }
 
 pub fn rotate(src: &DynamicImage, angle: f32) -> RgbaImage {
-    let (w, h) = src.dimensions();
-
-    let diag = ((w * w + h * h) as f32).sqrt().ceil() as u32;
-    let src_center = Vec2::new(w as f32, h as f32) / 2.0;
-    let dst_center = Vec2::splat(diag as f32 / 2.0);
-
-    let mut dst: RgbaImage = ImageBuffer::new(diag, diag);
-
-    let inv_rot = Mat2::from_angle(angle.to_radians()).inverse();
-
-    for (x, y, pixel) in dst.enumerate_pixels_mut() {
-        let dst_offset = Vec2::new(x as f32 + 0.5, y as f32 + 0.5) - dst_center;
-        let src_offset = inv_rot * dst_offset + src_center;
-
-        let (s_x, s_y) = src_offset.floor().into();
-
-        if s_x >= 0.0 && s_y >= 0.0 && s_x < w as f32 && s_y < h as f32 {
-            *pixel = src.get_pixel(s_x as u32, s_y as u32);
-        }
-    }
-
-    dst
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let rotate = Mat2::from_rows_slice(&[
+        cos, -sin,
+        sin, cos]);
+    matrix_filter(src, rotate)
 }
 
 pub fn raw_resize(src: &DynamicImage, dim: (u32, u32)) -> RgbaImage {
     let mut dst: RgbaImage = ImageBuffer::new(dim.0, dim.1);
     let empty = Rgba::from([0, 0, 0, 0]);
 
+    let size = src.dimensions();
+    let diff = (dim.0 - size.0, dim.1 - size.1);
+    let offset = (diff.0 / 2, diff.1 / 2);
+
     for (x, y, pixel) in dst.enumerate_pixels_mut() {
-        *pixel = get_pixel_or(src, x, y, &empty);
+        *pixel = get_pixel_or(src, x - offset.0, y - offset.1, &empty);
     }
 
     dst
@@ -113,3 +150,20 @@ pub fn resize(src: &DynamicImage, dim: (u32, u32)) -> RgbaImage {
 
     dst
 }
+
+fn color_filter<F>(src: &DynamicImage, new_color: F) -> RgbaImage
+where F: Fn(Rgba<u8>) -> Rgba<u8> {
+    let default_color = Rgba::from([0, 0, 0, 0]);
+    let mut dst: RgbaImage = ImageBuffer::new(src.width(), src.height());
+
+    for (x, y, pixel) in dst.enumerate_pixels_mut() {
+        *pixel = new_color(get_pixel_or(src, x, y, &default_color));
+    }
+
+    dst
+}
+
+pub fn multiply_color(src: &DynamicImage, factor: f32) -> RgbaImage {
+    color_filter(src, |c| Rgba(c.0.map(|n| (n as f32 * factor).round() as u8)))
+}
+
