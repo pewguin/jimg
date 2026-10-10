@@ -12,6 +12,7 @@ op = "flip-horizontal"
 op = "shear"
 horizontal = "0..2"
 vertical = "0..2"
+ease = "cubic"
 
 [[effects]]
 op = "flip-horizontal"

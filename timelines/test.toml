@@ -11,6 +11,23 @@ ease = "ease-in-out"
 op = "scale"
 
 [[effects]]
-op = "multiply"
-factor = "0.01..20"
-ease = "cubic"
+op = "multiply-all"
+r = "0..2"
+g = "0..1"
+b = "0..1"
+ease = "ease-in-out"
+loop = "pingpong"
+
+[[effects]]
+op = "rotate"
+angle = "0..15"
+end = 0.5
+ease = "ease-in-out"
+loop = "pingpong"
+
+[[effects]]
+op = "rotate"
+angle = "0..-15"
+start = 0.5
+ease = "ease-in-out"
+loop = "pingpong"

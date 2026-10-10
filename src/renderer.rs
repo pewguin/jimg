@@ -2,8 +2,7 @@ use std::borrow::Cow;
 
 use image::{DynamicImage, RgbaImage};
 
-use crate::filters::{flip_horizontal, flip_vertical, multiply_color, raw_resize, resize, rotate, scale, shear};
-use crate::timeline::{Ease, Effect, Loop, Op, Param, Timing};
+use crate::{filters::{color_filter::{MultiplyComponentsFilter, MultiplyFilter}, filter::{ImgOp, RawResizeFilter, apply}, matrix_filter::{flip_horizontal, flip_vertical, rotate_filter, scale_filter}}, timeline::{Ease, Effect, Loop, Op, Param, Timing}};
 
 impl Ease {
     fn apply(self, t: f32) -> f32 {
@@ -49,16 +48,18 @@ impl Effect {
     /// Op at t=0 should be no effect, t=1 full effect
     pub fn apply(&self, img: &DynamicImage, t: f32) -> RgbaImage {
         let t = self.timing.progress(t);
-        match &self.op {
-            Op::Scale { x_factor, y_factor }=> scale(&img, x_factor.at(t), y_factor.at(t)),
-            Op::Shear { horizontal, vertical }=> shear(&img, horizontal.at(t), vertical.at(t)),
-            Op::FlipHorizontal => flip_horizontal(&img),
-            Op::FlipVertical => flip_vertical(&img),
-            Op::Rotate { angle } => rotate(&img, angle.at(t)),
-            Op::RawResize { x, y } => raw_resize(&img, (*x, *y)),
-            Op::Resize { x, y } => resize(&img, (*x, *y)),
-            Op::Multiply { factor } => multiply_color(&img, factor.at(t))
-        }
+        let op = ImgOp::from(match &self.op {
+            Op::Scale { x_factor, y_factor } => ImgOp::from(scale_filter(x_factor.at(t), y_factor.at(t))),
+            Op::Shear { horizontal, vertical } => ImgOp::from(scale_filter(horizontal.at(t), vertical.at(t))),
+            Op::FlipHorizontal => ImgOp::from(flip_horizontal()),
+            Op::FlipVertical => ImgOp::from(flip_vertical()),
+            Op::Rotate { angle } => ImgOp::from(rotate_filter(angle.at(t))),
+            Op::RawResize { x, y } => ImgOp::from(RawResizeFilter::new((*x, *y))),
+            Op::Resize { x, y } => ImgOp::from(RawResizeFilter::new((*x, *y))),
+            Op::Multiply { factor } => ImgOp::from(MultiplyFilter::new(factor.at(t))),
+            Op::MultiplyAll { r, g, b } => ImgOp::from(MultiplyComponentsFilter::new(r.at(t), g.at(t), b.at(t)))
+        });
+        apply(&img, op)
     }
 }
 

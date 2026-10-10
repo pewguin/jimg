@@ -103,6 +103,17 @@ pub enum Op {
     Multiply { 
         #[arg(long, allow_hyphen_values = true)]
         factor: Param
+    },
+    MultiplyAll {
+        #[arg(long, allow_hyphen_values = true)]
+        #[serde(default = "param_one")]
+        r: Param,
+        #[arg(long, allow_hyphen_values = true)]
+        #[serde(default = "param_one")]
+        g: Param,
+        #[arg(long, allow_hyphen_values = true)]
+        #[serde(default = "param_one")]
+        b: Param,
     }
 }
 

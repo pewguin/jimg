@@ -7,7 +7,7 @@ use std::{error::Error, fs::File};
 use image::{Delay, DynamicImage, Frame, ImageReader, RgbaImage, codecs::gif::{GifEncoder, Repeat}};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 
-use crate::{filters::raw_resize, timeline::timeline};
+use crate::{filters::filter::{ImgOp, RawResizeFilter, apply}, timeline::timeline};
 
 const GIF_FPS: u32 = 15;
 
@@ -39,7 +39,7 @@ fn save_gif(frames: Vec<RgbaImage>, path: &str) -> Result<(), Box<dyn Error>> {
     });
 
     let frames = frames.into_iter().map(|f| {
-        raw_resize(&DynamicImage::ImageRgba8(f), largest)
+        apply(&DynamicImage::ImageRgba8(f), ImgOp::from(RawResizeFilter::new(largest)))
     });
 
     let n = frames.len() as u64;
