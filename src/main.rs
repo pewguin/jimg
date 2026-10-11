@@ -1,13 +1,14 @@
 pub mod filters;
 pub mod renderer;
+pub mod script;
 pub mod timeline;
 
-use std::{error::Error, fs::File};
+use std::{error::Error, fs::File, io};
 
 use image::{Delay, DynamicImage, Frame, ImageReader, RgbaImage, codecs::gif::{GifEncoder, Repeat}};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 
-use crate::{filters::filter::{ImgOp, RawResizeFilter, apply}, timeline::timeline};
+use crate::{filters::filter::{ImgOp, RawResizeFilter, apply}, timeline::{Source, timeline}};
 
 const GIF_FPS: u32 = 15;
 
@@ -51,22 +52,32 @@ fn save_gif(frames: Vec<RgbaImage>, path: &str) -> Result<(), Box<dyn Error>> {
 }
 
 
-fn main() {
-    let timeline = match timeline() {
-        Ok(tl) => tl,
-        Err(err) => {
-            panic!("{:#?}", err);
-        },
+fn main() -> Result<(), Box<dyn Error>> {
+    let args = timeline()?;
+    let img = load_image(args.input.as_deref().unwrap_or("img.png"))?;
+    let length = args.time.ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "specify gif length with -t")
+    })?;
+
+    let frame_count = (length as f32 / GIF_FPS as f32).round().max(1.0) as u32;
+    let program = match &args.source {
+        Source::Script(path) => Some(script::Program::from_file(path)?),
+        Source::Inline(_) => None,
     };
+    let frames: Vec<RgbaImage> = (0..frame_count)
+        .progress_with(bar(frame_count as u64, "rendering"))
+        .map(|i| {
+            let t = i as f32 / frame_count as f32;
+            match (&args.source, &program) {
+                (Source::Script(_), Some(program)) => program.evaluate(&img, t),
+                (Source::Inline(effects), None) => {
+                    Ok(renderer::apply_all(&img, effects, t))
+                }
+                _ => unreachable!("script program must match the selected source"),
+            }
+        })
+        .collect::<Result<_, _>>()?;
 
-    println!("tl: {:?}", timeline);
-    let img = load_image(&timeline.input.unwrap_or("img.png".to_string())).unwrap();
-
-    let frames = (timeline.length as f32 / GIF_FPS as f32).round() as u32;
-    let frames: Vec<RgbaImage> = (0..frames)
-        .progress_with(bar(frames as u64, "rendering"))
-        .map(|i| renderer::apply_all(&img, &timeline.effects, i as f32 / frames as f32))
-        .collect();
-
-    save_gif(frames, &timeline.output.unwrap_or("output.gif".to_owned())).unwrap();
+    save_gif(frames, args.output.as_deref().unwrap_or("output.gif"))?;
+    Ok(())
 }

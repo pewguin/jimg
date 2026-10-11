@@ -3,7 +3,7 @@ use std::ops;
 use glam::{Mat2, Vec2};
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba, RgbaImage};
 
-use crate::filters::{color_filter::{ColorFilter, MultiplyComponentsFilter, MultiplyFilter, apply_color_filter}, filter::ImgOp::Remap, matrix_filter::MatrixFilter};
+use crate::filters::{color_filter::{ColorFilter, GrayscaleFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter, apply_color_filter}, filter::ImgOp::Remap, matrix_filter::MatrixFilter};
 
 type Size = (u32, u32);
 
@@ -29,7 +29,7 @@ macro_rules! color_op {
 }
 
 remap_op!(RawResizeFilter, ResizeFilter, OffsetFilter, MatrixFilter);
-color_op!(MultiplyFilter, MultiplyComponentsFilter);
+color_op!(MultiplyFilter, MultiplyComponentsFilter, GrayscaleFilter, SmoothstepFilter);
 
 fn size_to_vec(value: Size) -> Vec2 {
     Vec2::new(value.0 as f32, value.1 as f32)
@@ -42,16 +42,6 @@ fn vec_to_size(v: Vec2) -> Size {
 pub trait Filter {
     fn new_size(&self, old_size: Vec2) -> Vec2;
     fn dst_to_src(&self, dst: Vec2, old_size: Vec2, new_size: Vec2) -> Vec2;
-}
-
-fn get_pixel_or(src: &DynamicImage, x: u32, y: u32, or: &Rgba<u8>) -> Rgba<u8> {
-    let (sx, sy) = src.dimensions();
-
-    if x >= 0 && x < sx && y >= 0 && y < sy {
-        src.get_pixel(x, y)
-    } else {
-        or.clone()
-    }
 }
 
 pub fn apply(src: &DynamicImage, op: ImgOp) -> RgbaImage {
@@ -115,6 +105,12 @@ impl Filter for RawResizeFilter {
 
 pub struct ResizeFilter {
     size: Vec2,
+}
+
+impl ResizeFilter {
+    pub fn new(size: Size) -> Self {
+        Self { size: size_to_vec(size) }
+    }
 }
 
 impl Filter for ResizeFilter {

@@ -49,3 +49,46 @@ impl ColorFilter for MultiplyComponentsFilter {
     }
 }
 
+fn luminosity(color: Rgba<u8>) -> f32 {
+    (0.2126 * color[0] as f32 + 0.7152 * color[1] as f32 + 0.0722 * color[2] as f32) / 255.0
+}
+
+pub struct GrayscaleFilter {}
+
+impl GrayscaleFilter {
+    pub fn new() -> Self { Self {} }
+}
+
+impl ColorFilter for GrayscaleFilter {
+    fn filter(&self, c: Rgba<u8>) -> Rgba<u8> {
+        let v = (luminosity(c) * 255.0).round().clamp(0.0, 255.0) as u8;
+        Rgba([v, v, v, c[3]])
+    }
+}
+
+fn smoothstep(start: f32, end: f32, t: f32) -> f32 {
+    let x = ((t - start) / (end - start)).clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
+}
+
+pub struct SmoothstepFilter {
+    start: f32,
+    end: f32,
+}
+
+impl SmoothstepFilter {
+    pub fn new(start: f32, end: f32) -> Self {
+        Self {
+            start,
+            end,
+        }
+    }
+}
+
+impl ColorFilter for SmoothstepFilter {
+    fn filter(&self, c: Rgba<u8>) -> Rgba<u8> {
+        let l = luminosity(c);
+        let v = (smoothstep(self.start, self.end, l) * 255.0).round().clamp(0.0, 255.0) as u8;
+        Rgba([v, v, v, c[3]])
+    }
+}

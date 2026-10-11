@@ -1,62 +1,45 @@
-use std::{error::Error, fs, path::PathBuf, str::FromStr};
-use serde::Deserialize;
-use clap::{Args, ValueEnum, Subcommand, Parser};
+use std::{error::Error, path::PathBuf, str::FromStr};
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum ParamRepr {
-    Fixed(f32),
-    Text(String),
-    Range { from: f32, to: f32 },
-}
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
-#[derive(Deserialize, Clone, Debug)]
-#[serde(try_from = "ParamRepr")]
+#[derive(Clone, Debug)]
 pub struct Param {
     pub from: f32,
     pub to: f32,
 }
 
 impl Param {
-    fn fixed(val: f32) -> Self {
-        Self {
-            from: val,
-            to: val
-        }
+    fn fixed(value: f32) -> Self {
+        Self { from: value, to: value }
     }
 
     fn range(from: f32, to: f32) -> Self {
-        Self {
-            from,
-            to,
-        }
+        Self { from, to }
     }
 }
 
 impl FromStr for Param {
     type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parse_num = |st: Option<&str>| -> Result<f32, Self::Err> {
-            let string = st.ok_or(format!("missing value in '{}'", s))?;
-            string.trim().parse::<f32>().map_err(|e| format!("could not parse {} in '{}': {}", string.trim(), s, e.to_string()))
-        };
-        let mut nums = s.split("..");
-        let from = parse_num(nums.next())?;
-        let to = parse_num(nums.next())?;
-        match nums.next() {
-            Some(_) => Err(format!("too many numbers in '{}'", s)),
-            None => Ok(Self::range(from, to)),
-        }
-    }
-}
 
-impl TryFrom<ParamRepr> for Param {
-    type Error = String;
-    fn try_from(r: ParamRepr) -> Result<Self, String> {
-        match r {
-            ParamRepr::Fixed(v) => Ok(Param::fixed(v)),
-            ParamRepr::Text(s) => s.parse(),
-            ParamRepr::Range { from, to } => Ok(Param::range(from, to)),
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let mut values = value.split("..");
+        let parse = |part: Option<&str>| -> Result<f32, String> {
+            let part = part.ok_or_else(|| format!("missing value in '{value}'"))?;
+            part.trim()
+                .parse::<f32>()
+                .map_err(|error| format!("could not parse '{}' in '{value}': {error}", part.trim()))
+        };
+        let from = parse(values.next())?;
+        match values.next() {
+            Some(to) => {
+                let to = parse(Some(to))?;
+                if values.next().is_some() {
+                    Err(format!("too many numbers in '{value}'"))
+                } else {
+                    Ok(Self::range(from, to))
+                }
+            }
+            None => Ok(Self::fixed(from)),
         }
     }
 }
@@ -67,58 +50,45 @@ impl Default for Param {
     }
 }
 
-fn param_one() -> Param { Param::fixed(1.0) }
-fn param_zero() -> Param { Param::fixed(0.0) }
-
-fn one() -> f32 { 1.0 }
-fn zero() -> f32 { 0.0 }
-
-#[derive(Subcommand, Deserialize, Debug)]
-#[serde(tag = "op", rename_all = "kebab-case")]
+#[derive(Subcommand, Debug)]
+#[command(rename_all = "kebab-case")]
 pub enum Op {
     Scale {
         #[arg(long, allow_hyphen_values = true)]
-        #[serde(default)]
-        x_factor: Param, 
+        x_factor: Param,
         #[arg(long, allow_hyphen_values = true)]
-        #[serde(default)]
         y_factor: Param,
     },
     Shear {
-        #[arg(long, allow_hyphen_values = true)]
-        #[serde(default = "param_zero")]
+        #[arg(long, allow_hyphen_values = true, default_value = "0")]
         horizontal: Param,
-        #[arg(long, allow_hyphen_values = true)]
-        #[serde(default = "param_zero")]
+        #[arg(long, allow_hyphen_values = true, default_value = "0")]
         vertical: Param,
     },
     FlipHorizontal,
     FlipVertical,
     Rotate {
         #[arg(long, allow_hyphen_values = true)]
-        angle: Param
+        angle: Param,
     },
     RawResize { x: u32, y: u32 },
     Resize { x: u32, y: u32 },
-    Multiply { 
+    Multiply {
         #[arg(long, allow_hyphen_values = true)]
-        factor: Param
+        factor: Param,
     },
     MultiplyAll {
-        #[arg(long, allow_hyphen_values = true)]
-        #[serde(default = "param_one")]
+        #[arg(long, allow_hyphen_values = true, default_value = "1")]
         r: Param,
-        #[arg(long, allow_hyphen_values = true)]
-        #[serde(default = "param_one")]
+        #[arg(long, allow_hyphen_values = true, default_value = "1")]
         g: Param,
-        #[arg(long, allow_hyphen_values = true)]
-        #[serde(default = "param_one")]
+        #[arg(long, allow_hyphen_values = true, default_value = "1")]
         b: Param,
-    }
+    },
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, ValueEnum)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
 pub enum Loop {
     #[default]
     Reset,
@@ -126,8 +96,8 @@ pub enum Loop {
     Once,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, ValueEnum)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
 pub enum Ease {
     #[default]
     Linear,
@@ -136,68 +106,48 @@ pub enum Ease {
     EaseInOut,
 }
 
-#[derive(Args, Deserialize, Clone, Debug)]
+#[derive(Args, Clone, Debug)]
 pub struct Timing {
     #[arg(long, global = true, default_value_t = 0.0)]
-    #[serde(default)]
     pub start: f32,
     #[arg(long, global = true, default_value_t = 1.0)]
-    #[serde(default = "one")]
     pub end: f32,
     #[arg(long, global = true, default_value = "once")]
-    #[serde(default, rename = "loop")]
     pub looping: Loop,
     #[arg(long, global = true, default_value = "linear")]
-    #[serde(default)]
     pub ease: Ease,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 pub struct Effect {
-    #[serde(flatten)]
     pub op: Op,
-    #[serde(flatten)]
     pub timing: Timing,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct Timeline {
-    #[serde(default)]
-    pub input: Option<String>,
-    #[serde(default)]
-    pub output: Option<String>,
-    pub length: u32,
-    #[serde(default)]
-    pub effects: Vec<Effect>
-}
-
-impl Timeline {
-    fn with_input_output(mut self, input: Option<String>, output: Option<String>) -> Timeline{
-        self.input = Some(input.unwrap_or_else(|| self.input.expect("no input file")));
-        self.output = output.or(self.output);
-        self
-    }
+#[derive(Debug)]
+pub enum Source {
+    Script(PathBuf),
+    Inline(Vec<Effect>),
 }
 
 #[derive(Subcommand)]
-enum Source {
+enum InputSource {
     File { path: PathBuf },
     #[command(external_subcommand)]
-    Inline(Vec<String>)
+    Inline(Vec<String>),
 }
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
     #[arg(short, long)]
-    pub input: Option<String>,
+    input: Option<String>,
     #[arg(short, long, global = true)]
-    pub output: Option<String>,
+    output: Option<String>,
     #[arg(short, long)]
-    pub time: Option<u32>,
-
+    time: Option<u32>,
     #[command(subcommand)]
-    source: Source,
+    source: InputSource,
 }
 
 #[derive(Parser)]
@@ -211,28 +161,38 @@ struct EffectCli {
 
 impl From<EffectCli> for Effect {
     fn from(value: EffectCli) -> Self {
-        Effect { op: value.op, timing: value.timing }
+        Self {
+            op: value.op,
+            timing: value.timing,
+        }
     }
 }
 
-fn parse_effects(args: &[String]) -> Result<Vec<Effect>, clap::Error> {
-    args.split(|a| a == "+")
-        .map(|chunk| EffectCli::try_parse_from(chunk).map(|c| c).map(Effect::from))
-        .collect()
+#[derive(Debug)]
+pub struct Arguments {
+    pub input: Option<String>,
+    pub output: Option<String>,
+    pub time: Option<u32>,
+    pub source: Source,
 }
 
-pub fn timeline() -> Result<Timeline, Box<dyn Error>> {
+pub fn timeline() -> Result<Arguments, Box<dyn Error>> {
     let cli = Cli::parse();
-    Ok(match cli.source {
-        Source::File { path } => {
-            let tl: Timeline = toml::from_str(&fs::read_to_string(path)?)?;
-            tl.with_input_output(cli.input, cli.output)
-        },
-        Source::Inline(args) => Timeline {
-            input: cli.input,
-            output: cli.output,
-            length: cli.time.expect("specify length of gif with -t"),
-            effects: parse_effects(&args)?
-        },
+    let source = match cli.source {
+        InputSource::File { path } => Source::Script(path),
+        InputSource::Inline(args) => {
+            let effects = args
+                .split(|arg| arg == "+")
+                .map(|chunk| EffectCli::try_parse_from(chunk).map(Effect::from))
+                .collect::<Result<Vec<_>, _>>()?;
+            Source::Inline(effects)
+        }
+    };
+
+    Ok(Arguments {
+        input: cli.input,
+        output: cli.output,
+        time: cli.time,
+        source,
     })
 }

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use image::{DynamicImage, RgbaImage};
 
-use crate::{filters::{color_filter::{MultiplyComponentsFilter, MultiplyFilter}, filter::{ImgOp, RawResizeFilter, apply}, matrix_filter::{flip_horizontal, flip_vertical, rotate_filter, scale_filter}}, timeline::{Ease, Effect, Loop, Op, Param, Timing}};
+use crate::{filters::{color_filter::{MultiplyComponentsFilter, MultiplyFilter}, filter::{ImgOp, RawResizeFilter, ResizeFilter, apply}, matrix_filter::{flip_horizontal, flip_vertical, rotate_filter, scale_filter, shear_filter}}, timeline::{Ease, Effect, Loop, Op, Param, Timing}};
 
 impl Ease {
     fn apply(self, t: f32) -> f32 {
@@ -50,12 +50,12 @@ impl Effect {
         let t = self.timing.progress(t);
         let op = ImgOp::from(match &self.op {
             Op::Scale { x_factor, y_factor } => ImgOp::from(scale_filter(x_factor.at(t), y_factor.at(t))),
-            Op::Shear { horizontal, vertical } => ImgOp::from(scale_filter(horizontal.at(t), vertical.at(t))),
+            Op::Shear { horizontal, vertical } => ImgOp::from(shear_filter(horizontal.at(t), vertical.at(t))),
             Op::FlipHorizontal => ImgOp::from(flip_horizontal()),
             Op::FlipVertical => ImgOp::from(flip_vertical()),
             Op::Rotate { angle } => ImgOp::from(rotate_filter(angle.at(t))),
             Op::RawResize { x, y } => ImgOp::from(RawResizeFilter::new((*x, *y))),
-            Op::Resize { x, y } => ImgOp::from(RawResizeFilter::new((*x, *y))),
+            Op::Resize { x, y } => ImgOp::from(ResizeFilter::new((*x, *y))),
             Op::Multiply { factor } => ImgOp::from(MultiplyFilter::new(factor.at(t))),
             Op::MultiplyAll { r, g, b } => ImgOp::from(MultiplyComponentsFilter::new(r.at(t), g.at(t), b.at(t)))
         });
@@ -68,4 +68,3 @@ pub fn apply_all(img: &DynamicImage, effects: &[Effect], t: f32) -> RgbaImage {
         Cow::Owned(DynamicImage::ImageRgba8(eff.apply(&acc.into_owned(), t)))
     }).to_rgba8()
 }
-

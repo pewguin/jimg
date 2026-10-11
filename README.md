@@ -2,15 +2,22 @@
 
 ## Operations
 
-| Operation | Operands | Effect |
-|-----------|----------|--------|
-| `scale`  | x_factor: scales on width, y_factor: scales on height | Scales the image |
-| `slant` | angle: angle to perform the slant at | Shears the image |
-| `flip-horizontal` | | Flips the image horizontally |
-| `flip-vertical` | | Flips the image vertically |
-| `rotate`   | angle: angle to rotate image to in degrees, clockwise | Rotates the image |
-| `raw-resize` | x: new width, y: new height | Changes the size of an image but not the positions of any pixels |
-| `resize` | x: new width, y: new height | Scales an image to a new size, stretching as neccessary |
+Rhai scripts receive `source` (the input image) and `t` (normalized animation
+progress from `0.0` to `1.0`) and must return an `Image` as their final value.
+Image operations return a new image, so variables can hold and reuse
+intermediate results:
+
+| Operation | Arguments | Effect |
+|-----------|-----------|--------|
+| `scale(x, y)` | width and height factors | Scales the image |
+| `shear(horizontal, vertical)` | horizontal and vertical shear | Shears the image |
+| `flip_horizontal()` | | Flips the image horizontally |
+| `flip_vertical()` | | Flips the image vertically |
+| `rotate(degrees)` | angle in degrees, clockwise | Rotates the image |
+| `raw_resize(width, height)` | output dimensions | Changes the canvas dimensions without scaling pixels |
+| `resize(width, height)` | output dimensions | Scales the image to the new dimensions |
+| `multiply(factor)` | color multiplier | Multiplies image color values |
+| `multiply_all(r, g, b)` | per-channel multipliers | Multiplies RGB channels |
 
 ## Build
 
@@ -21,7 +28,7 @@ cargo build --release
 ## Usage
 
 ```sh
-jimg --input <INPUT> --time <TIME> [--output <OUTPUT>] (file <TIMELINE>|<OPERS>)
+jimg --input <INPUT> --time <TIME> [--output <OUTPUT>] (file <SCRIPT>|<OPERS>)
 ```
 
 ### Arguments
@@ -33,7 +40,7 @@ jimg --input <INPUT> --time <TIME> [--output <OUTPUT>] (file <TIMELINE>|<OPERS>)
 | `-t, --time <TIME>` | Amount of milliseconds the gif should run for |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
-| `<TIMELINE>` | Path to the timeline TOML file |
+| `<SCRIPT>` | Path to a Rhai script |
 | `<OPERS>` | List of operations seperated by the + character |
 
 ### Examples
@@ -44,34 +51,31 @@ Halve an image's width, then spin it in a circle
 jimg -i photo.png -t 1000 -o squished.gif scale --x_factor 1..0.5 --y_factor 1 --end 0.5 --ease cubic + rotate --angle 0..360 --start 0.5
 ```
 
-Use the modifications specified in timeline.toml
+Use a Rhai script to animate a spin
 
 ```sh
-jimg -i photo.png -t 1000 file timeline.toml
+jimg -i photo.png -t 1000 file timelines/spin.rhai
 ```
 
-Timeline file that rotates an image CCW and then back
+Rhai scripts can use the image passed by `--input`, save intermediate images,
+and return their finished image:
 
-```toml
-length = 1000
-input = "photo.png"
+```rhai
+let original = source.clone();
+let smaller = original.scale(1.0 - 0.5 * t, 1.0);
+smaller.rotate(360.0 * t)
+```
 
-[[effects]]
-op = "rotate"
-angle = "0..360"
-end = 0.5
-ease = "quad"
+Basic GIF creation still supports inline operations:
 
-[[effects]]
-op = "rotate"
-angle = "0..-360"
-start = 0.5
+```sh
+jimg -i photo.png -t 1000 scale --x-factor 1..0.5 --y-factor 1 + rotate --angle 0..360
 ```
 
 ## Supported formats
 
 ## Notes
 
-- When passing a timeline file, input and output files from the command line are prioritized
-- In fact, input and output are not neccessary in the timeline file, opting to be always specified in the command
-- Example timelines can be found in timelines/
+- Rhai scripts are evaluated for each animation frame with the same source image and a changing `t`.
+- `--time` sets the GIF duration in milliseconds.
+- Example scripts can be found in `timelines/`.
