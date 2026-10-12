@@ -4,7 +4,7 @@ use image::{DynamicImage, RgbaImage};
 use rhai::{AST, Engine, EvalAltResult, Scope};
 
 use crate::filters::{
-    binary_filter::{AddFilter, BinaryFilter, SubFilter, apply_binary_filter}, blur_filter::{GaussianFilter, apply_gaussian}, color_filter::{GrayscaleFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter}, filter::{ImgOp, RawResizeFilter, ResizeFilter, apply}, matrix_filter::{
+    binary_filter::{AddFilter, BinaryFilter, SubFilter, apply_binary_filter}, blur_filter::{GaussianFilter, apply_gaussian}, color_filter::{GrayscaleFilter, InvertFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter}, filter::{ImgOp, RawResizeFilter, ResizeFilter, apply}, matrix_filter::{
         flip_horizontal, flip_vertical, rotate_filter, scale_filter, shear_filter,
     },
 };
@@ -108,6 +108,9 @@ fn image_engine() -> Engine {
     });
     engine.register_fn("smoothstep", |image: ScriptImage, start: f64, end: f64| {
         image.apply(SmoothstepFilter::new(start as f32, end as f32).into())
+    });
+    engine.register_fn("invert", |image: ScriptImage| {
+        image.apply(InvertFilter::new().into())
     });
     engine
 }

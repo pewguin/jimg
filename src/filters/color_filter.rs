@@ -92,3 +92,21 @@ impl ColorFilter for SmoothstepFilter {
         Rgba([v, v, v, c[3]])
     }
 }
+
+pub struct InvertFilter {}
+
+impl InvertFilter {
+    pub fn new() -> Self { Self {} }
+}
+
+impl ColorFilter for InvertFilter {
+    fn filter(&self, c: Rgba<u8>) -> Rgba<u8> {
+        let a = c.0;
+        Rgba([
+            255 - a[0],
+            255 - a[1],
+            255 - a[2],
+            a[3]
+        ])
+    }
+}

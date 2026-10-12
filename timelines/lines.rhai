@@ -1,7 +1,7 @@
-let sigma = 2.0;
-let gain = 7.0;
+let sigma = 1.5;
+let sigma_wide_coef = 1.3;
 
 let gray = source.grayscale();
-let dog = gray.gaussian(sigma) - gray.gaussian(sigma * 1.6);
+let dog = gray.gaussian(sigma) - gray.gaussian(sigma * sigma_wide_coef);
 
-dog.multiply(gain).smoothstep(0.05, 0.1)
+dog.smoothstep(0.012, 0.03).invert()

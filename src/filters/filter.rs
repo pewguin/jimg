@@ -1,9 +1,8 @@
-use std::ops;
 
-use glam::{Mat2, Vec2};
+use glam::Vec2;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba, RgbaImage};
 
-use crate::filters::{color_filter::{ColorFilter, GrayscaleFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter, apply_color_filter}, filter::ImgOp::Remap, matrix_filter::MatrixFilter};
+use crate::filters::{color_filter::{ColorFilter, GrayscaleFilter, InvertFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter, apply_color_filter}, matrix_filter::MatrixFilter};
 
 type Size = (u32, u32);
 
@@ -29,7 +28,7 @@ macro_rules! color_op {
 }
 
 remap_op!(RawResizeFilter, ResizeFilter, OffsetFilter, MatrixFilter);
-color_op!(MultiplyFilter, MultiplyComponentsFilter, GrayscaleFilter, SmoothstepFilter);
+color_op!(MultiplyFilter, MultiplyComponentsFilter, GrayscaleFilter, SmoothstepFilter, InvertFilter);
 
 fn size_to_vec(value: Size) -> Vec2 {
     Vec2::new(value.0 as f32, value.1 as f32)
