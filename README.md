@@ -35,6 +35,17 @@ cargo build --release
 
 ## Usage
 
+Launch the GUI with no arguments:
+
+```sh
+jimg
+```
+
+The GUI lets you open an image, edit a Rhai script with a live preview, scrub
+`t`, and export a GIF with a chosen duration and frame rate.
+
+The original CLI remains available when `--input` is supplied:
+
 ```sh
 jimg --input <INPUT> [--file <SCRIPT>] [--time <TIME>] [--output <OUTPUT>]
 ```
@@ -80,4 +91,5 @@ Basic GIF creation still supports inline operations:
 - Applying filters in Rhai scripts is lazy. If an image is not used in the final output, filters applied to it will not be processed.
 - `--time` sets the GIF duration in milliseconds.
 - Example scripts can be found in `timelines/`.
-- Gifs always run at 15ms. I'll change this if it ever becomes a problem.
+- CLI-created GIFs use 15 frames per second. The GUI lets you choose the frame
+  rate and duration for each export.

@@ -3,7 +3,7 @@ use std::{error::Error, fs, mem, path::Path};
 use image::Rgba32FImage;
 use rhai::{AST, Engine, EvalAltResult, Scope};
 
-use crate::filters::{affine_filter::AffineFilter, binary_filter::{AddFilter, BinaryFilter, SubFilter}, blur_filter::GaussianFilter, color_filter::{Color, GrayscaleFilter, InvertFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter}, filter::{self, Filter}, remap_filter::{RawResizeFilter, Remap, ResizeFilter}};
+use crate::filters::{affine_filter::AffineFilter, binary_filter::{AddFilter, BinaryFilter, SubFilter}, blur_filter::GaussianFilter, color_filter::{Color, GrayscaleFilter, InvertFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter}, filter::Filter, remap_filter::{RawResizeFilter, Remap, ResizeFilter}};
 
 pub struct Program {
     engine: Engine,
@@ -55,8 +55,12 @@ impl ScriptImage {
 impl Program {
     pub fn from_file(path: &Path) -> Result<Self, Box<dyn Error>> {
         let script = fs::read_to_string(path)?;
+        Self::from_script(&script)
+    }
+
+    pub fn from_script(script: &str) -> Result<Self, Box<dyn Error>> {
         let engine = image_engine();
-        let ast = engine.compile(&script)?;
+        let ast = engine.compile(script)?;
         Ok(Self { engine, ast })
     }
 
