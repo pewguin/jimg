@@ -1,18 +1,25 @@
-use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba, RgbaImage};
+use image::{ImageBuffer, Rgba, Rgba32FImage};
 
 pub trait BinaryFilter {
-    fn combine(&self, lhs: Rgba<u8>, rhs: Rgba<u8>) -> Rgba<u8>;
+    fn apply(&self, lhs: &Rgba32FImage, rhs: &Rgba32FImage) -> Rgba32FImage;
 }
 
-pub fn apply_binary_filter<F>(lhs: &DynamicImage, rhs: &DynamicImage, filter: &F) -> RgbaImage
-where F: BinaryFilter + ?Sized {
-    let mut dst: RgbaImage = ImageBuffer::new(lhs.width().min(rhs.width()), lhs.height().min(rhs.height()));
+pub trait BinaryColorFilter {
+    fn combine(&self, lhs: Rgba<f32>, rhs: Rgba<f32>) -> Rgba<f32>;
+}
 
-    for (x, y, pixel) in dst.enumerate_pixels_mut() {
-        *pixel = filter.combine(lhs.get_pixel(x, y), rhs.get_pixel(x, y));
+impl<F> BinaryFilter for F
+where
+    F: BinaryColorFilter + ?Sized {
+    fn apply(&self, lhs: &Rgba32FImage, rhs: &Rgba32FImage) -> Rgba32FImage {
+        let mut dst: Rgba32FImage = ImageBuffer::new(lhs.width().min(rhs.width()), lhs.height().min(rhs.height()));
+
+        for (x, y, pixel) in dst.enumerate_pixels_mut() {
+            *pixel = self.combine(*lhs.get_pixel(x, y), *rhs.get_pixel(x, y));
+        }
+        
+        dst
     }
-
-    dst
 }
 
 pub struct AddFilter {}
@@ -21,14 +28,14 @@ impl AddFilter {
     pub fn new() -> Self { Self {} }
 }
 
-impl BinaryFilter for AddFilter {
-    fn combine(&self, lhs: Rgba<u8>, rhs: Rgba<u8>) -> Rgba<u8> {
+impl BinaryColorFilter for AddFilter {
+    fn combine(&self, lhs: Rgba<f32>, rhs: Rgba<f32>) -> Rgba<f32> {
         let l = lhs.0;
         let r = rhs.0;
         Rgba([
-            l[0].saturating_add(r[0]),
-            l[1].saturating_add(r[1]),
-            l[2].saturating_add(r[2]),
+            l[0] + r[0],
+            l[1] + r[1],
+            l[2] + r[2],
             l[3].max(r[3]),
         ])
     }
@@ -40,14 +47,14 @@ impl SubFilter {
     pub fn new() -> Self { Self {} }
 }
 
-impl BinaryFilter for SubFilter {
-    fn combine(&self, lhs: Rgba<u8>, rhs: Rgba<u8>) -> Rgba<u8> {
+impl BinaryColorFilter for SubFilter {
+    fn combine(&self, lhs: Rgba<f32>, rhs: Rgba<f32>) -> Rgba<f32> {
         let l = lhs.0;
         let r = rhs.0;
         Rgba([
-            l[0].saturating_sub(r[0]),
-            l[1].saturating_sub(r[1]),
-            l[2].saturating_sub(r[2]),
+            l[0] - r[0],
+            l[1] - r[1],
+            l[2] - r[2],
             l[3].max(r[3]),
         ])
     }

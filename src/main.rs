@@ -1,14 +1,13 @@
 pub mod filters;
-pub mod renderer;
 pub mod script;
-pub mod timeline;
 
-use std::{error::Error, fs::File, io};
+use std::{error::Error, fs::File, path::Path};
 
-use image::{Delay, DynamicImage, Frame, ImageReader, RgbaImage, codecs::gif::{GifEncoder, Repeat}};
+use image::{Delay, DynamicImage, Frame, ImageReader, Rgba32FImage, codecs::gif::{GifEncoder, Repeat}};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
+use clap::Parser;
 
-use crate::{filters::filter::{ImgOp, RawResizeFilter, apply}, timeline::{Source, timeline}};
+use crate::filters::{filter::Filter, remap_filter::{RawResizeFilter, Remap}};
 
 const GIF_FPS: u32 = 15;
 
@@ -28,7 +27,7 @@ fn bar(len: u64, msg: &'static str) -> ProgressBar {
     pb
 }
 
-fn save_gif(frames: Vec<RgbaImage>, path: &str) -> Result<(), Box<dyn Error>> {
+fn save_gif(frames: Vec<Rgba32FImage>, path: &Path) -> Result<(), Box<dyn Error>> {
     let file = File::create(path)?;
     let mut encoder = GifEncoder::new_with_speed(file, 15);
     encoder.set_repeat(Repeat::Infinite)?;
@@ -39,8 +38,10 @@ fn save_gif(frames: Vec<RgbaImage>, path: &str) -> Result<(), Box<dyn Error>> {
         (l.0.max(f.width()), l.1.max(f.height()))
     });
 
+    let filter = Remap(RawResizeFilter::new(largest));
     let frames = frames.into_iter().map(|f| {
-        apply(&DynamicImage::ImageRgba8(f), ImgOp::from(RawResizeFilter::new(largest)))
+        let fimg = filter.apply(&f);
+        DynamicImage::to_rgba8(&DynamicImage::ImageRgba32F(fimg))
     });
 
     let n = frames.len() as u64;
@@ -51,33 +52,37 @@ fn save_gif(frames: Vec<RgbaImage>, path: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(short, long)]
+    input: String,
+    #[arg(short, long, default_value_t = "output.gif".to_string())]
+    output: String,
+    #[arg(short, long, default_value_t = "filter.rhai".to_string())]
+    file: String,
+    #[arg(short, long, default_value_t = 1000)]
+    time: u32,
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args = timeline()?;
-    let img = load_image(args.input.as_deref().unwrap_or("img.png"))?;
-    let length = args.time.ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "specify gif length with -t")
-    })?;
+    let args = Args::parse();
+    let img = DynamicImage::to_rgba32f(&load_image(args.input.as_ref())?);
 
-    let frame_count = (length as f32 / GIF_FPS as f32).round().max(1.0) as u32;
-    let program = match &args.source {
-        Source::Script(path) => Some(script::Program::from_file(path)?),
-        Source::Inline(_) => None,
-    };
-    let frames: Vec<RgbaImage> = (0..frame_count)
+    let frame_count = (args.time as f32 / GIF_FPS as f32).round().max(1.0) as u32;
+
+    let output = Path::new(&args.output);
+    let file = Path::new(&args.file);
+
+    let program = script::Program::from_file(file)?;
+
+    let frames: Vec<Rgba32FImage> = (0..frame_count)
         .progress_with(bar(frame_count as u64, "rendering"))
         .map(|i| {
             let t = i as f32 / frame_count as f32;
-            match (&args.source, &program) {
-                (Source::Script(_), Some(program)) => program.evaluate(&img, t),
-                (Source::Inline(effects), None) => {
-                    Ok(renderer::apply_all(&img, effects, t))
-                }
-                _ => unreachable!("script program must match the selected source"),
-            }
+            program.evaluate(&img, t)
         })
         .collect::<Result<_, _>>()?;
 
-    save_gif(frames, args.output.as_deref().unwrap_or("output.gif"))?;
+    save_gif(frames, output)?;
     Ok(())
 }

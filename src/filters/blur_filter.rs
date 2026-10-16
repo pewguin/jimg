@@ -1,5 +1,8 @@
-use image::{DynamicImage, RgbaImage};
+use image::Rgba32FImage;
 
+use crate::filters::filter::Filter;
+
+#[derive(Clone, Debug)]
 pub struct GaussianFilter {
     kernel: Vec<f32>,
 }
@@ -59,32 +62,25 @@ fn blur_pass(
     dst
 }
 
-pub fn apply_gaussian(src: &DynamicImage, filter: &GaussianFilter) -> RgbaImage {
-    let rgba = src.to_rgba8();
-    let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+impl Filter for GaussianFilter {
+    fn apply(&self, img: &Rgba32FImage) -> Rgba32FImage {
+        let (w, h) = (img.width() as usize, img.height() as usize);
 
-    let buf: Vec<[f32; 4]> = rgba
-        .pixels()
-        .map(|p| {
-            let a = p[3] as f32;
-            let f = a / 255.0;
-            [p[0] as f32 * f, p[1] as f32 * f, p[2] as f32 * f, a]
-        })
-        .collect();
+        let buf: Vec<[f32; 4]> = img
+            .pixels()
+            .map(|p| {
+                p.0
+            })
+            .collect();
 
-    let buf = blur_pass(&buf, w, h, filter, true);
-    let buf = blur_pass(&buf, w, h, filter, false);
+        let buf = blur_pass(&buf, w, h, self, true);
+        let buf = blur_pass(&buf, w, h, self, false);
 
-    let mut dst = RgbaImage::new(w as u32, h as u32);
-    for (pixel, p) in dst.pixels_mut().zip(buf) {
-        let a = p[3];
-        let un = if a > 0.0 { 255.0 / a } else { 0.0 };
-        *pixel = image::Rgba([
-            (p[0] * un).round().clamp(0.0, 255.0) as u8,
-            (p[1] * un).round().clamp(0.0, 255.0) as u8,
-            (p[2] * un).round().clamp(0.0, 255.0) as u8,
-            a.round().clamp(0.0, 255.0) as u8,
-        ]);
+        let mut dst = Rgba32FImage::new(w as u32, h as u32);
+        for (pixel, p) in dst.pixels_mut().zip(buf) {
+            *pixel = image::Rgba(p);
+        }
+
+        dst
     }
-    dst
 }

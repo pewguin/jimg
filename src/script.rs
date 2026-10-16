@@ -1,31 +1,55 @@
-use std::{error::Error, fs, path::Path};
+use std::{error::Error, fs, mem, path::Path};
 
-use image::{DynamicImage, RgbaImage};
+use image::Rgba32FImage;
 use rhai::{AST, Engine, EvalAltResult, Scope};
 
-use crate::filters::{
-    binary_filter::{AddFilter, BinaryFilter, SubFilter, apply_binary_filter}, blur_filter::{GaussianFilter, apply_gaussian}, color_filter::{GrayscaleFilter, InvertFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter}, filter::{ImgOp, RawResizeFilter, ResizeFilter, apply}, matrix_filter::{
-        flip_horizontal, flip_vertical, rotate_filter, scale_filter, shear_filter,
-    },
-};
-
-#[derive(Clone)]
-pub struct ScriptImage(DynamicImage);
-
-impl ScriptImage {
-    fn apply(self, op: ImgOp) -> Self {
-        Self(DynamicImage::ImageRgba8(apply(&self.0, op)))
-    }
-}
-
-fn apply_binary<F>(img_a: ScriptImage, img_b: ScriptImage, filter: &F) -> ScriptImage
-where F: BinaryFilter {
-    ScriptImage(DynamicImage::ImageRgba8(apply_binary_filter(&img_a.0, &img_b.0, filter)))
-}
+use crate::filters::{affine_filter::AffineFilter, binary_filter::{AddFilter, BinaryFilter, SubFilter}, blur_filter::GaussianFilter, color_filter::{Color, GrayscaleFilter, InvertFilter, MultiplyComponentsFilter, MultiplyFilter, SmoothstepFilter}, filter::{self, Filter}, remap_filter::{RawResizeFilter, Remap, ResizeFilter}};
 
 pub struct Program {
     engine: Engine,
     ast: AST,
+}
+
+#[derive(Clone)]
+struct ScriptImage {
+    img: Rgba32FImage,
+    ops: Vec<Box<dyn Filter>>,
+}
+
+impl ScriptImage {
+    fn new(img: Rgba32FImage) -> Self {
+        Self { img, ops: Vec::new() }
+    }
+    fn filtered(mut self) -> Rgba32FImage {
+        self.optimize_filters();
+        self.ops.iter().fold(self.img, |acc, f| f.apply(&acc))
+    }
+
+    fn optimize_filters(&mut self) {
+        let mut optimized: Vec<Box<dyn Filter>> = Vec::new();
+        let mut iter = mem::take(&mut self.ops).into_iter();
+
+        let mut prev = match iter.next() {
+            Some(f) => f,
+            None => return
+        };
+
+        while let Some(op) = iter.next() {
+            if let (Some(first), Some(second)) = (prev.as_mat(), op.as_mat()) {
+                prev = Box::new(Remap(AffineFilter::new(second * first)));
+            } else {
+                optimized.push(prev);
+                prev = op;
+            }
+        }
+
+        optimized.push(prev);
+        self.ops = optimized;
+    }
+
+    fn add_filter(&mut self, filter: Box<dyn Filter>) {
+        self.ops.push(filter);
+    }
 }
 
 impl Program {
@@ -36,12 +60,12 @@ impl Program {
         Ok(Self { engine, ast })
     }
 
-    pub fn evaluate(&self, source: &DynamicImage, t: f32) -> Result<RgbaImage, Box<dyn Error>> {
+    pub fn evaluate(&self, source: &Rgba32FImage, t: f32) -> Result<Rgba32FImage, Box<dyn Error>> {
         let mut scope = Scope::new();
-        scope.push("source", ScriptImage(source.clone()));
+        scope.push("source", ScriptImage::new(source.clone()));
         scope.push("t", t as f64);
         let image: ScriptImage = self.engine.eval_ast_with_scope(&mut scope, &self.ast)?;
-        Ok(image.0.to_rgba8())
+        Ok(image.filtered())
     }
 }
 
@@ -54,63 +78,75 @@ fn image_engine() -> Engine {
     });
     // Image manip
     engine.register_type_with_name::<ScriptImage>("Image");
+
     engine.register_fn("+", |i1: ScriptImage, i2: ScriptImage| {
-        apply_binary(i1, i2, &AddFilter::new())
+        ScriptImage::new(AddFilter::new().apply(&i1.filtered(), &i2.filtered()))
     });
     engine.register_fn("-", |i1: ScriptImage, i2: ScriptImage| {
-        apply_binary(i1, i2, &SubFilter::new())
+        ScriptImage::new(SubFilter::new().apply(&i1.filtered(), &i2.filtered()))
     });
     // Filters
-    engine.register_fn("scale", |image: ScriptImage, x: f64, y: f64| {
-        image.apply(scale_filter(x as f32, y as f32).into())
+    engine.register_fn("scale", |mut image: ScriptImage, x: f64, y: f64| {
+        image.add_filter(Box::new(Remap(AffineFilter::scale(x as f32, y as f32))));
+        image
     });
-    engine.register_fn("shear", |image: ScriptImage, x: f64, y: f64| {
-        image.apply(shear_filter(x as f32, y as f32).into())
+    engine.register_fn("shear", |mut image: ScriptImage, x: f64, y: f64| {
+        image.add_filter(Box::new(Remap(AffineFilter::shear(x as f32, y as f32))));
+        image
     });
-    engine.register_fn("flip_horizontal", |image: ScriptImage| {
-        image.apply(flip_horizontal().into())
+    engine.register_fn("flip_horizontal", |mut image: ScriptImage| {
+        image.add_filter(Box::new(Remap(AffineFilter::flip_horizontal())));
+        image
     });
-    engine.register_fn("flip_vertical", |image: ScriptImage| {
-        image.apply(flip_vertical().into())
+    engine.register_fn("flip_vertical", |mut image: ScriptImage| {
+        image.add_filter(Box::new(Remap(AffineFilter::flip_vertical())));
+        image
     });
-    engine.register_fn("rotate", |image: ScriptImage, degrees: f64| {
-        image.apply(rotate_filter(degrees as f32).into())
+    engine.register_fn("rotate", |mut image: ScriptImage, degrees: f64| {
+        image.add_filter(Box::new(Remap(AffineFilter::rotate(degrees as f32))));
+        image
     });
     engine.register_fn(
         "raw_resize",
-        |image: ScriptImage, x: i64, y: i64| -> Result<ScriptImage, Box<EvalAltResult>> {
+        |mut image: ScriptImage, x: i64, y: i64| -> Result<ScriptImage, Box<EvalAltResult>> {
             let size = checked_size(x, y)?;
-            Ok(image.apply(RawResizeFilter::new(size).into()))
+            image.add_filter(Box::new(Remap(RawResizeFilter::new(size))));
+            Ok(image)
         },
     );
     engine.register_fn(
         "resize",
-        |image: ScriptImage, x: i64, y: i64| -> Result<ScriptImage, Box<EvalAltResult>> {
+        |mut image: ScriptImage, x: i64, y: i64| -> Result<ScriptImage, Box<EvalAltResult>> {
             let size = checked_size(x, y)?;
-            Ok(image.apply(ResizeFilter::new(size).into()))
+            image.add_filter(Box::new(Remap(ResizeFilter::new(size))));
+            Ok(image)
         },
     );
-    engine.register_fn("multiply", |image: ScriptImage, factor: f64| {
-        image.apply(MultiplyFilter::new(factor as f32).into())
+    engine.register_fn("multiply", |mut image: ScriptImage, factor: f64| {
+        image.add_filter(Box::new(Color(MultiplyFilter::new(factor as f32))));
+        image
     });
-    engine.register_fn(
-        "multiply_all",
-        |image: ScriptImage, r: f64, g: f64, b: f64| {
-            image.apply(MultiplyComponentsFilter::new(r as f32, g as f32, b as f32).into())
-        },
-    );
-    engine.register_fn("grayscale", |image: ScriptImage| {
-        image.apply(GrayscaleFilter::new().into())
+    engine.register_fn("multiply_all", |mut image: ScriptImage, r: f64, g: f64, b: f64| {
+        image.add_filter(Box::new(Color(MultiplyComponentsFilter::new(
+            r as f32, g as f32, b as f32,
+        ))));
+        image
     });
-    engine.register_fn("gaussian", |image: ScriptImage, sigma: f64| {
-        let filter = GaussianFilter::new(sigma as f32);
-        ScriptImage(DynamicImage::ImageRgba8(apply_gaussian(&image.0, &filter)))
+    engine.register_fn("grayscale", |mut image: ScriptImage| {
+        image.add_filter(Box::new(Color(GrayscaleFilter::new())));
+        image
     });
-    engine.register_fn("smoothstep", |image: ScriptImage, start: f64, end: f64| {
-        image.apply(SmoothstepFilter::new(start as f32, end as f32).into())
+    engine.register_fn("gaussian", |mut image: ScriptImage, sigma: f64| {
+        image.add_filter(Box::new(GaussianFilter::new(sigma as f32)));
+        image
     });
-    engine.register_fn("invert", |image: ScriptImage| {
-        image.apply(InvertFilter::new().into())
+    engine.register_fn("smoothstep", |mut image: ScriptImage, start: f64, end: f64| {
+        image.add_filter(Box::new(Color(SmoothstepFilter::new(start as f32, end as f32))));
+        image
+    });
+    engine.register_fn("invert", |mut image: ScriptImage| {
+        image.add_filter(Box::new(Color(InvertFilter::new())));
+        image
     });
     engine
 }
