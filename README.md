@@ -5,7 +5,9 @@
 Rhai scripts receive `source` (the input image) and `t` (normalized animation
 progress from `0.0` to `1.0`) and must return an `Image` as their final value.
 Image operations return a new image, so variables can hold and reuse
-intermediate results:
+intermediate results.
+
+### Filters
 
 | Operation | Arguments | Effect |
 |-----------|-----------|--------|
@@ -18,6 +20,12 @@ intermediate results:
 | `resize(width, height)` | output dimensions | Scales the image to the new dimensions |
 | `multiply(factor)` | color multiplier | Multiplies image color values |
 | `multiply_all(r, g, b)` | per-channel multipliers | Multiplies RGB channels |
+| `img + img` | Two images to sum | Sums each pixel component of each image |
+| `img - img` | Two images to sub | Subtracts each pixel component of the right from the left |
+
+### Useful functions
+| Function | Arguments | Returns |
+| `smoothstep(start, end, t)` | Smooths t between start and end | start if t<=start, end if t>=end, otherwise a value between them |
 
 ## Build
 
@@ -28,7 +36,7 @@ cargo build --release
 ## Usage
 
 ```sh
-jimg --input <INPUT> --time <TIME> [--output <OUTPUT>] (file <SCRIPT>|<OPERS>)
+jimg --input <INPUT> [--file <SCRIPT>] [--time <TIME>] [--output <OUTPUT>]
 ```
 
 ### Arguments
@@ -37,45 +45,39 @@ jimg --input <INPUT> --time <TIME> [--output <OUTPUT>] (file <SCRIPT>|<OPERS>)
 |----------|-------------|
 | `-i, --input <INPUT>` | Path to the source image |
 | `-o, --output <OUTPUT>` | Path to write the result (default: `output.gif`) |
-| `-t, --time <TIME>` | Amount of milliseconds the gif should run for |
+| `-t, --time <TIME>` | Amount of milliseconds the gif should run for (default: `1000`) |
+| `-f, --file` | Path to a Rhai script (default: `filter.rhai`) |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
-| `<SCRIPT>` | Path to a Rhai script |
-| `<OPERS>` | List of operations seperated by the + character |
 
 ### Examples
-
-Halve an image's width, then spin it in a circle
-
-```sh
-jimg -i photo.png -t 1000 -o squished.gif scale --x_factor 1..0.5 --y_factor 1 --end 0.5 --ease cubic + rotate --angle 0..360 --start 0.5
-```
 
 Use a Rhai script to animate a spin
 
 ```sh
-jimg -i photo.png -t 1000 file timelines/spin.rhai
+jimg -i photo.png -t 1000 -f timelines/spin.rhai
+```
+
+`spin.rhai`:
+```rhai
+source.rotate(360.0 * t)
 ```
 
 Rhai scripts can use the image passed by `--input`, save intermediate images,
 and return their finished image:
 
 ```rhai
-let original = source.clone();
-let smaller = original.scale(1.0 - 0.5 * t, 1.0);
-smaller.rotate(360.0 * t)
+let green_only = source.multiply_all(0.0, 1.0, 0.0);
+let smaller = source.scale(1.0 - 0.5 * t, 1.0);
+smaller.rotate(360.0 * t) - green_only
 ```
 
 Basic GIF creation still supports inline operations:
 
-```sh
-jimg -i photo.png -t 1000 scale --x-factor 1..0.5 --y-factor 1 + rotate --angle 0..360
-```
-
-## Supported formats
-
 ## Notes
 
 - Rhai scripts are evaluated for each animation frame with the same source image and a changing `t`.
+- Applying filters in Rhai scripts is lazy. If an image is not used in the final output, filters applied to it will not be processed.
 - `--time` sets the GIF duration in milliseconds.
 - Example scripts can be found in `timelines/`.
+- Gifs always run at 15ms. I'll change this if it ever becomes a problem.
